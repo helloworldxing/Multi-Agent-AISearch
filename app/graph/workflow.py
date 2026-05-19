@@ -1,31 +1,35 @@
-from typing import Callable
+from __future__ import annotations
 
+from typing import TypedDict
+
+from langgraph.graph import StateGraph, START, END
+
+from app.agents.search_agent import search
+from app.agents.writer_agent import write
 from app.mcp.context import MCPContext
-from app.tools.registry import ToolRegistry
 
 
-class SimpleWorkflow:
-    """Minimal workflow placeholder for LangGraph integration."""
-
-    def __init__(self, run_fn: Callable[[MCPContext], dict]) -> None:
-        self._run_fn = run_fn
-
-    def invoke(self, ctx: MCPContext) -> dict:
-        return self._run_fn(ctx)
+class ResearchState(TypedDict):
+    ctx: MCPContext
+    docs: list[dict]
+    document: str
 
 
-def build_workflow() -> SimpleWorkflow:
-    tools = ToolRegistry.default()
+def _search_node(state: ResearchState) -> ResearchState:
+    docs = search(state["ctx"])
+    return {**state, "docs": docs}
 
-    def _run(ctx: MCPContext) -> dict:
-        search = tools.get("search")
-        summarize = tools.get("summarize")
-        docs = search(ctx)
-        summary = summarize(ctx, docs)
-        return {
-            "request": ctx.request,
-            "docs": docs,
-            "summary": summary,
-        }
 
-    return SimpleWorkflow(_run)
+def _write_node(state: ResearchState) -> ResearchState:
+    document = write(state["ctx"], state["docs"])
+    return {**state, "document": document}
+
+
+def build_workflow() -> StateGraph:
+    graph = StateGraph(ResearchState)
+    graph.add_node("search", _search_node)
+    graph.add_node("write", _write_node)
+    graph.add_edge(START, "search")
+    graph.add_edge("search", "write")
+    graph.add_edge("write", END)
+    return graph.compile()

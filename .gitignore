@@ -1,2 +1,4 @@
 /.env.example
 /.venv
+/.env
+/data

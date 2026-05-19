@@ -1,5 +1,8 @@
 langgraph
 langchain
+langchain-openai
 pydantic
 fastapi
 uvicorn
+tavily-python
+python-dotenv
