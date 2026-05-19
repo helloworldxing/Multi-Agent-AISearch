@@ -13,7 +13,7 @@
   h1 { text-align: center; margin: 32px 0 8px; font-size: 28px; }
   .subtitle { text-align: center; color: #888; margin-bottom: 32px; font-size: 14px; }
 
-  .input-bar { display: flex; gap: 12px; margin-bottom: 24px; }
+  .input-bar { display: flex; gap: 12px; margin-bottom: 12px; }
   .input-bar input {
     flex: 1; padding: 12px 16px; font-size: 16px; border: 2px solid #e0e0e0;
     border-radius: 8px; outline: none; transition: border-color .2s;
@@ -27,18 +27,35 @@
   .input-bar button:hover { background: #3a6fd8; }
   .input-bar button:disabled { background: #aaa; cursor: not-allowed; }
 
+  .email-bar { margin-bottom: 24px; }
+  .email-bar input {
+    width: 100%; padding: 10px 14px; font-size: 14px; border: 2px solid #e0e0e0;
+    border-radius: 8px; outline: none; transition: border-color .2s;
+  }
+  .email-bar input:focus { border-color: #4f8cff; }
+  .email-hint { font-size: 12px; color: #999; margin-top: 4px; padding-left: 4px; }
+
+  .intent-chip {
+    display: inline-block; padding: 4px 10px; border-radius: 12px;
+    font-size: 12px; font-weight: 500; margin-bottom: 12px;
+  }
+  .intent-chat     { background: #e8eaff; color: #3f51b5; }
+  .intent-research { background: #e6f7ee; color: #2e7d32; }
+  .intent-email    { background: #fff4e0; color: #b26a00; }
+  .intent-chip.hidden { display: none; }
+
   .status-bar {
     padding: 10px 16px; border-radius: 8px; margin-bottom: 16px;
     font-size: 14px; display: none;
   }
+  .status-bar.routing   { background: #ede7f6; color: #4527a0; display: block; }
   .status-bar.searching { background: #fff3cd; color: #856404; display: block; }
   .status-bar.writing   { background: #cce5ff; color: #004085; display: block; }
+  .status-bar.chatting  { background: #e8eaff; color: #3f51b5; display: block; }
   .status-bar.done      { background: #d4edda; color: #155724; display: block; }
   .status-bar.error     { background: #f8d7da; color: #721c24; display: block; }
 
-  .sources {
-    margin-bottom: 16px; display: none;
-  }
+  .sources { margin-bottom: 16px; display: none; }
   .sources.visible { display: block; }
   .sources h3 { font-size: 14px; color: #666; margin-bottom: 8px; }
   .source-list { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -59,11 +76,13 @@
   .output-area.visible { display: block; }
   .output-area h1, .output-area h2, .output-area h3 { margin: 16px 0 8px; }
 
-  .file-info {
-    margin-top: 12px; padding: 8px 12px; background: #f0f0f0; border-radius: 6px;
-    font-size: 13px; color: #555; display: none;
+  .file-info, .email-info {
+    margin-top: 12px; padding: 8px 12px; border-radius: 6px;
+    font-size: 13px; display: none;
   }
-  .file-info.visible { display: block; }
+  .file-info  { background: #f0f0f0; color: #555; }
+  .email-info { background: #fff4e0; color: #b26a00; }
+  .file-info.visible, .email-info.visible { display: block; }
 
   .cursor-blink::after {
     content: "▊"; animation: blink 1s step-end infinite; color: #4f8cff;
@@ -74,13 +93,19 @@
 <body>
 <div class="container">
   <h1>AI 研究助手</h1>
-  <p class="subtitle">输入主题 → 搜索网络 → 自动撰稿</p>
+  <p class="subtitle">闲聊问答 · 主题研究 · 邮件投递（自动判断意图）</p>
 
   <div class="input-bar">
-    <input id="topicInput" type="text" placeholder="请输入研究主题，例如：2025年人工智能发展趋势" />
-    <button id="startBtn" onclick="startResearch()">开始研究</button>
+    <input id="topicInput" type="text" placeholder="例如：你好 / 总结 2025 AI 趋势 / 搜索新能源汽车并发到我邮箱" />
+    <button id="startBtn" onclick="startResearch()">发送</button>
   </div>
 
+  <div class="email-bar">
+    <input id="emailInput" type="email" placeholder="收件邮箱（仅当意图为'发送邮件'时使用，可留空）" />
+    <div class="email-hint">填写后，输入中包含"发到/发送/邮件"等关键词时会触发邮件投递</div>
+  </div>
+
+  <div id="intentChip" class="intent-chip hidden"></div>
   <div id="statusBar" class="status-bar"></div>
 
   <div id="sources" class="sources">
@@ -90,33 +115,54 @@
 
   <div id="output" class="output-area"></div>
   <div id="fileInfo" class="file-info"></div>
+  <div id="emailInfo" class="email-info"></div>
 </div>
 
 <script>
+const INTENT_LABELS = {
+  chat:     { text: '普通对话',  cls: 'intent-chat'     },
+  research: { text: '主题研究',  cls: 'intent-research' },
+  email:    { text: '邮件投递',  cls: 'intent-email'    }
+};
+
 function startResearch() {
   const topic = document.getElementById('topicInput').value.trim();
   if (!topic) return;
+  const email = document.getElementById('emailInput').value.trim();
 
-  const btn = document.getElementById('startBtn');
-  const statusBar = document.getElementById('statusBar');
-  const sources = document.getElementById('sources');
+  const btn        = document.getElementById('startBtn');
+  const statusBar  = document.getElementById('statusBar');
+  const intentChip = document.getElementById('intentChip');
+  const sources    = document.getElementById('sources');
   const sourceList = document.getElementById('sourceList');
-  const output = document.getElementById('output');
-  const fileInfo = document.getElementById('fileInfo');
+  const output     = document.getElementById('output');
+  const fileInfo   = document.getElementById('fileInfo');
+  const emailInfo  = document.getElementById('emailInfo');
 
   btn.disabled = true;
-  btn.textContent = '研究中...';
+  btn.textContent = '处理中...';
   statusBar.className = 'status-bar';
   statusBar.textContent = '';
+  intentChip.className = 'intent-chip hidden';
+  intentChip.textContent = '';
   sources.classList.remove('visible');
   sourceList.innerHTML = '';
   output.classList.remove('visible');
   output.textContent = '';
   output.classList.remove('cursor-blink');
   fileInfo.classList.remove('visible');
+  emailInfo.classList.remove('visible');
 
-  const url = '/api/research/stream?topic=' + encodeURIComponent(topic);
+  let url = '/api/research/stream?topic=' + encodeURIComponent(topic);
+  if (email) url += '&email=' + encodeURIComponent(email);
   const es = new EventSource(url);
+
+  es.addEventListener('intent', function(e) {
+    const data = JSON.parse(e.data);
+    const meta = INTENT_LABELS[data.intent] || INTENT_LABELS.chat;
+    intentChip.className = 'intent-chip ' + meta.cls;
+    intentChip.textContent = '意图: ' + meta.text;
+  });
 
   es.addEventListener('status', function(e) {
     const data = JSON.parse(e.data);
@@ -149,19 +195,36 @@ function startResearch() {
     output.classList.remove('cursor-blink');
     statusBar.className = 'status-bar done';
     statusBar.textContent = data.message;
-    fileInfo.classList.add('visible');
-    fileInfo.textContent = '已保存至: ' + data.file;
-    btn.disabled = false;
-    btn.textContent = '开始研究';
-    es.close();
+    if (data.file) {
+      fileInfo.classList.add('visible');
+      fileInfo.textContent = '已保存至: ' + data.file;
+    }
+    // 'done' 不一定是流的最终事件 (email 模式后还会发 email_sent), 但按钮可在 close 时恢复
+  });
+
+  es.addEventListener('email_sent', function(e) {
+    const data = JSON.parse(e.data);
+    emailInfo.classList.add('visible');
+    emailInfo.textContent = '邮件投递: ' + data.message;
+  });
+
+  es.addEventListener('error', function(e) {
+    if (!e.data) return; // 浏览器原生 onerror 也走这里, 没有 data
+    try {
+      const data = JSON.parse(e.data);
+      statusBar.className = 'status-bar error';
+      statusBar.textContent = data.message || '处理失败';
+    } catch (_) {}
   });
 
   es.onerror = function() {
-    statusBar.className = 'status-bar error';
-    statusBar.textContent = '连接中断，请重试';
     output.classList.remove('cursor-blink');
+    if (!statusBar.classList.contains('done') && !statusBar.classList.contains('error')) {
+      statusBar.className = 'status-bar error';
+      statusBar.textContent = '连接中断或已结束';
+    }
     btn.disabled = false;
-    btn.textContent = '开始研究';
+    btn.textContent = '发送';
     es.close();
   };
 }
