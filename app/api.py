@@ -29,7 +29,7 @@ app.add_middleware(
 _OUTPUT_DIR = Path(__file__).parent.parent / "data"
 
 # Only stream tokens from these nodes to the user; suppress LLM tokens from
-# router and reranker so they don't pollute the visible output.
+# router / planner / reranker so they don't pollute the visible output.
 _STREAMABLE_NODES = {"write", "chat"}
 
 
@@ -52,14 +52,17 @@ async def stream_research(
         initial_state = {
             "ctx": ctx,
             "intent": "",
-            "docs": [],
-            "index_info": {},
+            "subqueries": [],
             "chunks": [],
+            "subtask_progress": [],
             "document": "",
             "chat_response": "",
             "email_to": (email or "").strip(),
             "email_sent": {},
         }
+
+        total_subtasks = 0
+        finished_subtasks = 0
 
         async for mode, chunk in graph.astream(
             initial_state,
@@ -73,41 +76,40 @@ async def stream_research(
                         if intent == "chat":
                             yield _sse("status", {"phase": "chatting", "message": "正在回答..."})
                         else:
-                            yield _sse("status", {"phase": "searching", "message": f"正在广泛搜索: {topic}"})
+                            yield _sse("status", {"phase": "planning", "message": "正在拆解研究任务..."})
 
-                    elif node_name == "search":
-                        docs = node_output.get("docs", [])
-                        yield _sse(
-                            "search_results",
-                            {"count": len(docs), "docs": [
-                                {"title": d["title"], "url": d["url"], "content": d.get("content", "")}
-                                for d in docs
-                            ]},
-                        )
-                        yield _sse("status", {"phase": "indexing", "message": "正在切分并索引到向量库..."})
-
-                    elif node_name == "index":
-                        info = node_output.get("index_info", {})
-                        yield _sse("index_done", {
-                            "chunks": info.get("chunks", 0),
-                            "persist_dir": info.get("persist_dir", ""),
+                    elif node_name == "planner":
+                        subqueries = node_output.get("subqueries", []) or []
+                        total_subtasks = len(subqueries)
+                        finished_subtasks = 0
+                        yield _sse("plan_done", {
+                            "count": total_subtasks,
+                            "subqueries": subqueries,
                         })
-                        yield _sse("status", {"phase": "retrieving", "message": "正在精准检索 + LLM 重排..."})
-
-                    elif node_name == "retrieve":
-                        chunks = node_output.get("chunks", [])
-                        yield _sse("retrieve_done", {
-                            "count": len(chunks),
-                            "chunks": [
-                                {
-                                    "title": c.get("title", ""),
-                                    "url": c.get("url", ""),
-                                    "preview": (c.get("text") or "")[:160],
-                                }
-                                for c in chunks
-                            ],
+                        yield _sse("status", {
+                            "phase": "researching",
+                            "message": f"已拆解为 {total_subtasks} 个子任务，并行检索中...",
                         })
-                        yield _sse("status", {"phase": "writing", "message": "正在基于精排片段撰写..."})
+
+                    elif node_name == "subtask":
+                        # Each parallel branch fires its own update.
+                        progress_list = node_output.get("subtask_progress", []) or []
+                        for p in progress_list:
+                            finished_subtasks += 1
+                            yield _sse("subtask_done", {
+                                "idx": p.get("idx"),
+                                "subquery": p.get("subquery", ""),
+                                "docs": p.get("docs", 0),
+                                "indexed_chunks": p.get("indexed_chunks", 0),
+                                "chunks": p.get("chunks", 0),
+                                "finished": finished_subtasks,
+                                "total": total_subtasks,
+                            })
+                        if total_subtasks and finished_subtasks >= total_subtasks:
+                            yield _sse("status", {
+                                "phase": "writing",
+                                "message": "所有子任务完成，正在汇总撰写...",
+                            })
 
                     elif node_name == "write":
                         document = node_output.get("document", "")

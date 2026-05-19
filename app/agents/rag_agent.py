@@ -1,9 +1,10 @@
 """RAG pipeline: chunk + embed + Chroma index + retrieve + LLM rerank.
 
-A fresh, persisted Chroma collection is created per request under
-``data/vector_db/<trace_id>``. The directory is wiped on each new request so
-stale chunks from prior runs never leak in. The embedder (BGE-small-zh) is
-loaded lazily and cached at module level — first call downloads the model.
+A fresh, persisted Chroma collection is created per (request, subdir) under
+``data/vector_db/<trace_id>/<subdir>``. The ``subdir`` parameter lets parallel
+sub-tasks each write to an isolated directory so concurrent fan-out branches
+never clobber one another. Default ``subdir="main"`` preserves the legacy
+single-pass mode.
 """
 from __future__ import annotations
 
@@ -13,6 +14,7 @@ import re
 import shutil
 import uuid
 from pathlib import Path
+from typing import Optional
 
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -47,9 +49,13 @@ def _embed(texts: list[str]) -> list[list[float]]:
     return model.encode(texts, normalize_embeddings=True).tolist()
 
 
-def _open_collection(trace_id: str):
+def _persist_dir(trace_id: str, subdir: str) -> Path:
+    return _VECTOR_ROOT / trace_id / subdir
+
+
+def _open_collection(trace_id: str, subdir: str):
     import chromadb
-    persist_dir = _VECTOR_ROOT / trace_id
+    persist_dir = _persist_dir(trace_id, subdir)
     if persist_dir.exists():
         shutil.rmtree(persist_dir, ignore_errors=True)
     persist_dir.mkdir(parents=True, exist_ok=True)
@@ -57,9 +63,9 @@ def _open_collection(trace_id: str):
     return client.get_or_create_collection(name="docs", metadata={"hnsw:space": "cosine"})
 
 
-def index_documents(ctx: MCPContext, docs: list[dict]) -> dict:
-    """Chunk every doc and persist embeddings into a per-request Chroma collection."""
-    collection = _open_collection(ctx.trace_id)
+def index_documents(ctx: MCPContext, docs: list[dict], subdir: str = "main") -> dict:
+    """Chunk every doc and persist embeddings into a per-(request,subdir) Chroma collection."""
+    collection = _open_collection(ctx.trace_id, subdir)
 
     ids: list[str] = []
     texts: list[str] = []
@@ -84,32 +90,37 @@ def index_documents(ctx: MCPContext, docs: list[dict]) -> dict:
                 "url": d.get("url", ""),
             })
 
+    persist_dir = _persist_dir(ctx.trace_id, subdir)
     if not texts:
-        return {"chunks": 0, "persist_dir": str(_VECTOR_ROOT / ctx.trace_id)}
+        return {"chunks": 0, "subdir": subdir, "persist_dir": str(persist_dir)}
 
     embeddings = _embed(texts)
     collection.add(ids=ids, documents=texts, embeddings=embeddings, metadatas=metadatas)
 
-    return {"chunks": len(texts), "persist_dir": str(_VECTOR_ROOT / ctx.trace_id)}
+    return {"chunks": len(texts), "subdir": subdir, "persist_dir": str(persist_dir)}
 
 
-def retrieve(ctx: MCPContext, k_recall: int = 12, k_final: int = 6) -> list[dict]:
-    """Vector-recall then LLM rerank.
-
-    Returns a list of chunks of the form
-    ``{"id", "title", "url", "text", "doc_index"}`` ordered by reranked relevance.
-    """
+def retrieve(
+    ctx: MCPContext,
+    query: Optional[str] = None,
+    subdir: str = "main",
+    k_recall: int = 12,
+    k_final: int = 6,
+) -> list[dict]:
+    """Vector-recall then LLM rerank, scoped to one ``subdir``."""
     import chromadb
-    persist_dir = _VECTOR_ROOT / ctx.trace_id
+    persist_dir = _persist_dir(ctx.trace_id, subdir)
     if not persist_dir.exists():
         return []
+
+    actual_query = (query or ctx.request).strip()
 
     client = chromadb.PersistentClient(path=str(persist_dir))
     collection = client.get_or_create_collection(name="docs")
     if collection.count() == 0:
         return []
 
-    query_emb = _embed([ctx.request])[0]
+    query_emb = _embed([actual_query])[0]
     n_results = min(k_recall, collection.count())
     res = collection.query(query_embeddings=[query_emb], n_results=n_results)
 
@@ -129,7 +140,7 @@ def retrieve(ctx: MCPContext, k_recall: int = 12, k_final: int = 6) -> list[dict
     if not candidates:
         return []
 
-    ranked_ids = _llm_rerank(ctx.request, candidates)
+    ranked_ids = _llm_rerank(actual_query, candidates)
     if not ranked_ids:
         return candidates[:k_final]
 

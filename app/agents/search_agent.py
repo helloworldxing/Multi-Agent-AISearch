@@ -1,23 +1,25 @@
 from __future__ import annotations
 
 import os
+from typing import Optional
+
 from tavily import TavilyClient
 
 from app.mcp.context import MCPContext
 
 
-def search(ctx: MCPContext) -> list[dict]:
+def search(ctx: MCPContext, query: Optional[str] = None, max_results: int = 8) -> list[dict]:
     """Broad-recall web search.
 
-    Asks Tavily for full page content (raw_content) so that the downstream
-    RAG pipeline has substantial text to chunk and index, rather than only
-    the short snippets returned by default.
+    ``query`` defaults to ``ctx.request``; pass an explicit value when running
+    a per-subtask search in parallel research mode.
     """
+    actual_query = (query or ctx.request).strip()
     client = TavilyClient(api_key=os.environ["TAVILY_API_KEY"])
     response = client.search(
-        query=ctx.request,
+        query=actual_query,
         search_depth="advanced",
-        max_results=12,
+        max_results=max_results,
         include_raw_content=True,
     )
     return [

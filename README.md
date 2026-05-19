@@ -14,7 +14,7 @@ A local-first, multi-agent AI research assistant with LangGraph-style workflows,
 
 1. Create a virtual environment.
 2. Install dependencies: `pip install -r requirements.txt`
-3. Run: `python -m app.main`
+3. Run: `python -m app.main`或`.venv/Scripts/python.exe -m uvicorn app.api:app --reload`
 
 ## Roadmap
 
