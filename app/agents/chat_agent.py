@@ -6,8 +6,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from app.mcp.context import MCPContext
-
-_CHAT_PROMPT = "你是一个友好、专业的中文 AI 助手。直接、清晰地回答用户的问题。"
+from app.prompts import CHAT_SYSTEM
 
 
 def chat(ctx: MCPContext) -> str:
@@ -20,7 +19,7 @@ def chat(ctx: MCPContext) -> str:
     )
     response = llm.invoke(
         [
-            SystemMessage(content=_CHAT_PROMPT),
+            SystemMessage(content=CHAT_SYSTEM),
             HumanMessage(content=ctx.request),
         ]
     )
