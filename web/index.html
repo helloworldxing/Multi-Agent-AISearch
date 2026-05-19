@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 研究助手</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; background: #f5f7fa; color: #333; min-height: 100vh; }
+
+  .container { max-width: 900px; margin: 0 auto; padding: 24px; }
+
+  h1 { text-align: center; margin: 32px 0 8px; font-size: 28px; }
+  .subtitle { text-align: center; color: #888; margin-bottom: 32px; font-size: 14px; }
+
+  .input-bar { display: flex; gap: 12px; margin-bottom: 24px; }
+  .input-bar input {
+    flex: 1; padding: 12px 16px; font-size: 16px; border: 2px solid #e0e0e0;
+    border-radius: 8px; outline: none; transition: border-color .2s;
+  }
+  .input-bar input:focus { border-color: #4f8cff; }
+  .input-bar button {
+    padding: 12px 28px; font-size: 16px; background: #4f8cff; color: #fff;
+    border: none; border-radius: 8px; cursor: pointer; white-space: nowrap;
+    transition: background .2s;
+  }
+  .input-bar button:hover { background: #3a6fd8; }
+  .input-bar button:disabled { background: #aaa; cursor: not-allowed; }
+
+  .status-bar {
+    padding: 10px 16px; border-radius: 8px; margin-bottom: 16px;
+    font-size: 14px; display: none;
+  }
+  .status-bar.searching { background: #fff3cd; color: #856404; display: block; }
+  .status-bar.writing   { background: #cce5ff; color: #004085; display: block; }
+  .status-bar.done      { background: #d4edda; color: #155724; display: block; }
+  .status-bar.error     { background: #f8d7da; color: #721c24; display: block; }
+
+  .sources {
+    margin-bottom: 16px; display: none;
+  }
+  .sources.visible { display: block; }
+  .sources h3 { font-size: 14px; color: #666; margin-bottom: 8px; }
+  .source-list { display: flex; flex-wrap: wrap; gap: 8px; }
+  .source-card {
+    background: #fff; border: 1px solid #e0e0e0; border-radius: 6px;
+    padding: 8px 12px; font-size: 13px; max-width: 280px;
+  }
+  .source-card a { color: #4f8cff; text-decoration: none; font-weight: 500; }
+  .source-card a:hover { text-decoration: underline; }
+  .source-card p { color: #888; margin-top: 4px; font-size: 12px; line-height: 1.4;
+    overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+
+  .output-area {
+    background: #fff; border: 1px solid #e0e0e0; border-radius: 8px;
+    padding: 24px; min-height: 200px; font-size: 15px; line-height: 1.8;
+    white-space: pre-wrap; word-break: break-word; display: none;
+  }
+  .output-area.visible { display: block; }
+  .output-area h1, .output-area h2, .output-area h3 { margin: 16px 0 8px; }
+
+  .file-info {
+    margin-top: 12px; padding: 8px 12px; background: #f0f0f0; border-radius: 6px;
+    font-size: 13px; color: #555; display: none;
+  }
+  .file-info.visible { display: block; }
+
+  .cursor-blink::after {
+    content: "▊"; animation: blink 1s step-end infinite; color: #4f8cff;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>AI 研究助手</h1>
+  <p class="subtitle">输入主题 → 搜索网络 → 自动撰稿</p>
+
+  <div class="input-bar">
+    <input id="topicInput" type="text" placeholder="请输入研究主题，例如：2025年人工智能发展趋势" />
+    <button id="startBtn" onclick="startResearch()">开始研究</button>
+  </div>
+
+  <div id="statusBar" class="status-bar"></div>
+
+  <div id="sources" class="sources">
+    <h3>参考来源</h3>
+    <div id="sourceList" class="source-list"></div>
+  </div>
+
+  <div id="output" class="output-area"></div>
+  <div id="fileInfo" class="file-info"></div>
+</div>
+
+<script>
+function startResearch() {
+  const topic = document.getElementById('topicInput').value.trim();
+  if (!topic) return;
+
+  const btn = document.getElementById('startBtn');
+  const statusBar = document.getElementById('statusBar');
+  const sources = document.getElementById('sources');
+  const sourceList = document.getElementById('sourceList');
+  const output = document.getElementById('output');
+  const fileInfo = document.getElementById('fileInfo');
+
+  btn.disabled = true;
+  btn.textContent = '研究中...';
+  statusBar.className = 'status-bar';
+  statusBar.textContent = '';
+  sources.classList.remove('visible');
+  sourceList.innerHTML = '';
+  output.classList.remove('visible');
+  output.textContent = '';
+  output.classList.remove('cursor-blink');
+  fileInfo.classList.remove('visible');
+
+  const url = '/api/research/stream?topic=' + encodeURIComponent(topic);
+  const es = new EventSource(url);
+
+  es.addEventListener('status', function(e) {
+    const data = JSON.parse(e.data);
+    statusBar.className = 'status-bar ' + data.phase;
+    statusBar.textContent = data.message;
+  });
+
+  es.addEventListener('search_results', function(e) {
+    const data = JSON.parse(e.data);
+    sources.classList.add('visible');
+    data.docs.forEach(function(doc) {
+      const card = document.createElement('div');
+      card.className = 'source-card';
+      card.innerHTML = '<a href="' + doc.url + '" target="_blank">' + escapeHtml(doc.title) + '</a>'
+        + '<p>' + escapeHtml(doc.content.substring(0, 120)) + '</p>';
+      sourceList.appendChild(card);
+    });
+  });
+
+  es.addEventListener('token', function(e) {
+    const data = JSON.parse(e.data);
+    output.classList.add('visible');
+    output.classList.add('cursor-blink');
+    output.textContent += data.content;
+    output.scrollTop = output.scrollHeight;
+  });
+
+  es.addEventListener('done', function(e) {
+    const data = JSON.parse(e.data);
+    output.classList.remove('cursor-blink');
+    statusBar.className = 'status-bar done';
+    statusBar.textContent = data.message;
+    fileInfo.classList.add('visible');
+    fileInfo.textContent = '已保存至: ' + data.file;
+    btn.disabled = false;
+    btn.textContent = '开始研究';
+    es.close();
+  });
+
+  es.onerror = function() {
+    statusBar.className = 'status-bar error';
+    statusBar.textContent = '连接中断，请重试';
+    output.classList.remove('cursor-blink');
+    btn.disabled = false;
+    btn.textContent = '开始研究';
+    es.close();
+  };
+}
+
+document.getElementById('topicInput').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') startResearch();
+});
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+</script>
+</body>
+</html>

@@ -21,6 +21,7 @@ def _build_llm() -> ChatOpenAI:
         api_key=os.environ["DEEPSEEK_API_KEY"],
         base_url="https://api.deepseek.com",
         temperature=0.7,
+        streaming=True,
     )
 
 
