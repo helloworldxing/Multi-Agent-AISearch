@@ -48,12 +48,14 @@
     padding: 10px 16px; border-radius: 8px; margin-bottom: 16px;
     font-size: 14px; display: none;
   }
-  .status-bar.routing   { background: #ede7f6; color: #4527a0; display: block; }
-  .status-bar.searching { background: #fff3cd; color: #856404; display: block; }
-  .status-bar.writing   { background: #cce5ff; color: #004085; display: block; }
-  .status-bar.chatting  { background: #e8eaff; color: #3f51b5; display: block; }
-  .status-bar.done      { background: #d4edda; color: #155724; display: block; }
-  .status-bar.error     { background: #f8d7da; color: #721c24; display: block; }
+  .status-bar.routing    { background: #ede7f6; color: #4527a0; display: block; }
+  .status-bar.searching  { background: #fff3cd; color: #856404; display: block; }
+  .status-bar.indexing   { background: #e1f5fe; color: #01579b; display: block; }
+  .status-bar.retrieving { background: #f3e5f5; color: #6a1b9a; display: block; }
+  .status-bar.writing    { background: #cce5ff; color: #004085; display: block; }
+  .status-bar.chatting   { background: #e8eaff; color: #3f51b5; display: block; }
+  .status-bar.done       { background: #d4edda; color: #155724; display: block; }
+  .status-bar.error      { background: #f8d7da; color: #721c24; display: block; }
 
   .sources { margin-bottom: 16px; display: none; }
   .sources.visible { display: block; }
@@ -67,6 +69,19 @@
   .source-card a:hover { text-decoration: underline; }
   .source-card p { color: #888; margin-top: 4px; font-size: 12px; line-height: 1.4;
     overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+
+  .chunks { margin-bottom: 16px; display: none; }
+  .chunks.visible { display: block; }
+  .chunks h3 { font-size: 14px; color: #6a1b9a; margin-bottom: 8px; }
+  .chunk-list { display: flex; flex-direction: column; gap: 6px; }
+  .chunk-card {
+    background: #fafaff; border-left: 3px solid #ab47bc; border-radius: 4px;
+    padding: 8px 12px; font-size: 13px;
+  }
+  .chunk-card .chunk-title { font-weight: 500; color: #4a148c; margin-bottom: 4px; font-size: 12px; }
+  .chunk-card .chunk-title a { color: #4a148c; text-decoration: none; }
+  .chunk-card .chunk-title a:hover { text-decoration: underline; }
+  .chunk-card .chunk-preview { color: #555; font-size: 12px; line-height: 1.5; }
 
   .output-area {
     background: #fff; border: 1px solid #e0e0e0; border-radius: 8px;
@@ -113,6 +128,11 @@
     <div id="sourceList" class="source-list"></div>
   </div>
 
+  <div id="chunks" class="chunks">
+    <h3 id="chunksTitle">精排证据片段</h3>
+    <div id="chunkList" class="chunk-list"></div>
+  </div>
+
   <div id="output" class="output-area"></div>
   <div id="fileInfo" class="file-info"></div>
   <div id="emailInfo" class="email-info"></div>
@@ -135,6 +155,9 @@ function startResearch() {
   const intentChip = document.getElementById('intentChip');
   const sources    = document.getElementById('sources');
   const sourceList = document.getElementById('sourceList');
+  const chunks     = document.getElementById('chunks');
+  const chunksTitle= document.getElementById('chunksTitle');
+  const chunkList  = document.getElementById('chunkList');
   const output     = document.getElementById('output');
   const fileInfo   = document.getElementById('fileInfo');
   const emailInfo  = document.getElementById('emailInfo');
@@ -147,6 +170,8 @@ function startResearch() {
   intentChip.textContent = '';
   sources.classList.remove('visible');
   sourceList.innerHTML = '';
+  chunks.classList.remove('visible');
+  chunkList.innerHTML = '';
   output.classList.remove('visible');
   output.textContent = '';
   output.classList.remove('cursor-blink');
@@ -179,6 +204,27 @@ function startResearch() {
       card.innerHTML = '<a href="' + doc.url + '" target="_blank">' + escapeHtml(doc.title) + '</a>'
         + '<p>' + escapeHtml(doc.content.substring(0, 120)) + '</p>';
       sourceList.appendChild(card);
+    });
+  });
+
+  es.addEventListener('index_done', function(e) {
+    const data = JSON.parse(e.data);
+    statusBar.textContent = '已索引 ' + data.chunks + ' 个文本片段，正在精准检索...';
+  });
+
+  es.addEventListener('retrieve_done', function(e) {
+    const data = JSON.parse(e.data);
+    chunks.classList.add('visible');
+    chunksTitle.textContent = '精排证据片段（' + data.count + ' 条）';
+    data.chunks.forEach(function(c) {
+      const card = document.createElement('div');
+      card.className = 'chunk-card';
+      const title = c.title
+        ? '<a href="' + c.url + '" target="_blank">' + escapeHtml(c.title) + '</a>'
+        : escapeHtml(c.url || '未知来源');
+      card.innerHTML = '<div class="chunk-title">' + title + '</div>'
+        + '<div class="chunk-preview">' + escapeHtml(c.preview) + '...</div>';
+      chunkList.appendChild(card);
     });
   });
 

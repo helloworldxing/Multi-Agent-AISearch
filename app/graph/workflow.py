@@ -6,6 +6,7 @@ from langgraph.graph import StateGraph, START, END
 
 from app.agents.chat_agent import chat
 from app.agents.email_agent import send_email
+from app.agents.rag_agent import index_documents, retrieve
 from app.agents.router_agent import classify
 from app.agents.search_agent import search
 from app.agents.writer_agent import write
@@ -16,6 +17,8 @@ class ResearchState(TypedDict, total=False):
     ctx: MCPContext
     intent: str
     docs: list[dict]
+    index_info: dict
+    chunks: list[dict]
     document: str
     chat_response: str
     email_to: str
@@ -40,8 +43,18 @@ def _search_node(state: ResearchState) -> ResearchState:
     return {**state, "docs": docs}
 
 
+def _index_node(state: ResearchState) -> ResearchState:
+    info = index_documents(state["ctx"], state.get("docs", []))
+    return {**state, "index_info": info}
+
+
+def _retrieve_node(state: ResearchState) -> ResearchState:
+    chunks = retrieve(state["ctx"])
+    return {**state, "chunks": chunks}
+
+
 def _write_node(state: ResearchState) -> ResearchState:
-    document = write(state["ctx"], state["docs"])
+    document = write(state["ctx"], state.get("chunks", []))
     return {**state, "document": document}
 
 
@@ -72,6 +85,8 @@ def build_workflow() -> StateGraph:
     graph.add_node("router", _router_node)
     graph.add_node("chat", _chat_node)
     graph.add_node("search", _search_node)
+    graph.add_node("index", _index_node)
+    graph.add_node("retrieve", _retrieve_node)
     graph.add_node("write", _write_node)
     graph.add_node("email", _email_node)
 
@@ -80,7 +95,9 @@ def build_workflow() -> StateGraph:
         "router", _route_from_router, {"chat": "chat", "search": "search"}
     )
     graph.add_edge("chat", END)
-    graph.add_edge("search", "write")
+    graph.add_edge("search", "index")
+    graph.add_edge("index", "retrieve")
+    graph.add_edge("retrieve", "write")
     graph.add_conditional_edges(
         "write", _route_after_write, {"email": "email", END: END}
     )

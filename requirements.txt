@@ -1,8 +1,11 @@
 langgraph
 langchain
 langchain-openai
+langchain-text-splitters
 pydantic
 fastapi
 uvicorn
 tavily-python
 python-dotenv
+chromadb
+sentence-transformers
