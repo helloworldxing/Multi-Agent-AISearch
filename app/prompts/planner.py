@@ -1,7 +1,6 @@
-"""Prompt for the planner agent.
+"""规划智能体提示词。
 
-The planner decomposes the user's research request into 3-6 sub-questions
-that can be searched and retrieved in parallel.
+用于将用户研究请求拆解为 3-6 个可并行检索的子问题。
 """
 
 PLANNER_SYSTEM = """你是研究规划员。把用户输入的研究主题拆解为 3-6 个互补、可独立检索的子问题，让多路并行搜索能高效覆盖整个主题。

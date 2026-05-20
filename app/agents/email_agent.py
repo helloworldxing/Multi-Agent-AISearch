@@ -12,10 +12,10 @@ class EmailConfigError(RuntimeError):
 
 
 def send_email(to: str, subject: str, content: str) -> dict:
-    """Send a plain-text email via SMTP over SSL.
+    """通过 SSL SMTP 发送纯文本邮件。
 
-    Required env vars: SMTP_HOST, SMTP_USER, SMTP_PASS.
-    Optional: SMTP_PORT (default 465), SMTP_SENDER_NAME.
+    必需环境变量：SMTP_HOST、SMTP_USER、SMTP_PASS。
+    可选：SMTP_PORT（默认 465）、SMTP_SENDER_NAME。
     """
     if not to:
         raise EmailConfigError("收件邮箱为空")

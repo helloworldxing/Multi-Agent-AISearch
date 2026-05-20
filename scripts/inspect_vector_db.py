@@ -1,10 +1,11 @@
-"""Inspect a per-request Chroma collection on disk.
+"""检查磁盘上的单次请求 Chroma collection。
 
-Usage:
-  .venv/Scripts/python.exe scripts/inspect_vector_db.py            # list all trace_ids
-  .venv/Scripts/python.exe scripts/inspect_vector_db.py <trace_id> # dump that collection
-  .venv/Scripts/python.exe scripts/inspect_vector_db.py latest     # dump most-recent
+用法：
+    .venv/Scripts/python.exe scripts/inspect_vector_db.py            # 列出所有 trace_id
+    .venv/Scripts/python.exe scripts/inspect_vector_db.py <trace_id> # 导出指定 collection
+    .venv/Scripts/python.exe scripts/inspect_vector_db.py latest     # 导出最新一次
 """
+
 from __future__ import annotations
 
 import sys
@@ -28,7 +29,9 @@ def list_traces() -> None:
         return
     print(f"已存在的 trace 目录（按修改时间）：\n")
     for p in traces:
-        size_mb = sum(f.stat().st_size for f in p.rglob("*") if f.is_file()) / 1024 / 1024
+        size_mb = (
+            sum(f.stat().st_size for f in p.rglob("*") if f.is_file()) / 1024 / 1024
+        )
         print(f"  {p.name}  ({size_mb:.2f} MB)")
 
 

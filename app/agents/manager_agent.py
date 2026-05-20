@@ -2,5 +2,5 @@ from app.mcp.context import MCPContext
 
 
 def plan(ctx: MCPContext) -> dict:
-    """Stub planner for task decomposition."""
+    """用于任务拆解的占位规划器。"""
     return {"steps": ["search", "summarize"]}

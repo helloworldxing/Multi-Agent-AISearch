@@ -15,10 +15,10 @@ _MIN_SUBQUERIES = 1
 
 
 def plan(ctx: MCPContext) -> list[str]:
-    """Decompose ctx.request into 3-6 parallel sub-queries.
+    """将 ctx.request 拆解为 3-6 个可并行检索的子问题。
 
-    Falls back to ``[ctx.request]`` if the LLM output cannot be parsed,
-    so the downstream pipeline never sees an empty plan.
+    如果 LLM 输出无法解析，则回退为 ``[ctx.request]``，
+    以避免下游拿到空计划。
     """
     llm = ChatOpenAI(
         model="deepseek-chat",

@@ -8,11 +8,12 @@ from tavily import TavilyClient
 from app.mcp.context import MCPContext
 
 
-def search(ctx: MCPContext, query: Optional[str] = None, max_results: int = 8) -> list[dict]:
-    """Broad-recall web search.
+def search(
+    ctx: MCPContext, query: Optional[str] = None, max_results: int = 8
+) -> list[dict]:
+    """宽召回网页搜索。
 
-    ``query`` defaults to ``ctx.request``; pass an explicit value when running
-    a per-subtask search in parallel research mode.
+    ``query`` 默认取 ``ctx.request``；在并行子任务检索时传入显式值。
     """
     actual_query = (query or ctx.request).strip()
     client = TavilyClient(api_key=os.environ["TAVILY_API_KEY"])

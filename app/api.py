@@ -28,8 +28,8 @@ app.add_middleware(
 
 _OUTPUT_DIR = Path(__file__).parent.parent / "data"
 
-# Only stream tokens from these nodes to the user; suppress LLM tokens from
-# router / planner / reranker so they don't pollute the visible output.
+# 仅将这些节点的 token 流式输出给用户；屏蔽 router / planner / reranker 的 LLM token，
+# 避免污染可见输出。
 _STREAMABLE_NODES = {"write", "chat"}
 
 
@@ -74,50 +74,72 @@ async def stream_research(
                         intent = node_output.get("intent", "chat")
                         yield _sse("intent", {"intent": intent})
                         if intent == "chat":
-                            yield _sse("status", {"phase": "chatting", "message": "正在回答..."})
+                            yield _sse(
+                                "status",
+                                {"phase": "chatting", "message": "正在回答..."},
+                            )
                         else:
-                            yield _sse("status", {"phase": "planning", "message": "正在拆解研究任务..."})
+                            yield _sse(
+                                "status",
+                                {"phase": "planning", "message": "正在拆解研究任务..."},
+                            )
 
                     elif node_name == "planner":
                         subqueries = node_output.get("subqueries", []) or []
                         total_subtasks = len(subqueries)
                         finished_subtasks = 0
-                        yield _sse("plan_done", {
-                            "count": total_subtasks,
-                            "subqueries": subqueries,
-                        })
-                        yield _sse("status", {
-                            "phase": "researching",
-                            "message": f"已拆解为 {total_subtasks} 个子任务，并行检索中...",
-                        })
+                        yield _sse(
+                            "plan_done",
+                            {
+                                "count": total_subtasks,
+                                "subqueries": subqueries,
+                            },
+                        )
+                        yield _sse(
+                            "status",
+                            {
+                                "phase": "researching",
+                                "message": f"已拆解为 {total_subtasks} 个子任务，并行检索中...",
+                            },
+                        )
 
                     elif node_name == "subtask":
-                        # Each parallel branch fires its own update.
+                        # 每个并行分支都会触发自己的更新。
                         progress_list = node_output.get("subtask_progress", []) or []
                         for p in progress_list:
                             finished_subtasks += 1
-                            yield _sse("subtask_done", {
-                                "idx": p.get("idx"),
-                                "subquery": p.get("subquery", ""),
-                                "docs": p.get("docs", 0),
-                                "indexed_chunks": p.get("indexed_chunks", 0),
-                                "chunks": p.get("chunks", 0),
-                                "finished": finished_subtasks,
-                                "total": total_subtasks,
-                            })
+                            yield _sse(
+                                "subtask_done",
+                                {
+                                    "idx": p.get("idx"),
+                                    "subquery": p.get("subquery", ""),
+                                    "docs": p.get("docs", 0),
+                                    "indexed_chunks": p.get("indexed_chunks", 0),
+                                    "chunks": p.get("chunks", 0),
+                                    "finished": finished_subtasks,
+                                    "total": total_subtasks,
+                                },
+                            )
                         if total_subtasks and finished_subtasks >= total_subtasks:
-                            yield _sse("status", {
-                                "phase": "writing",
-                                "message": "所有子任务完成，正在汇总撰写...",
-                            })
+                            yield _sse(
+                                "status",
+                                {
+                                    "phase": "writing",
+                                    "message": "所有子任务完成，正在汇总撰写...",
+                                },
+                            )
 
                     elif node_name == "write":
                         document = node_output.get("document", "")
                         _OUTPUT_DIR.mkdir(exist_ok=True)
-                        filename = f"report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+                        filename = (
+                            f"report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+                        )
                         filepath = _OUTPUT_DIR / filename
                         filepath.write_text(document, encoding="utf-8")
-                        yield _sse("done", {"file": str(filepath), "message": "撰写完成"})
+                        yield _sse(
+                            "done", {"file": str(filepath), "message": "撰写完成"}
+                        )
 
                     elif node_name == "chat":
                         yield _sse("done", {"message": "回复完成"})
@@ -129,7 +151,10 @@ async def stream_research(
                             sent = node_output.get("email_sent", {})
                             yield _sse(
                                 "email_sent",
-                                {"to": sent.get("to", ""), "message": f"已发送至 {sent.get('to', '')}"},
+                                {
+                                    "to": sent.get("to", ""),
+                                    "message": f"已发送至 {sent.get('to', '')}",
+                                },
                             )
 
             elif mode == "messages":

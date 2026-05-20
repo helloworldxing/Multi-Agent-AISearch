@@ -1,8 +1,9 @@
-"""Centralized prompt module.
+"""集中管理提示词的模块。
 
-All agent prompts live here so they can be reviewed, version-controlled,
-and tuned without touching agent control flow.
+所有智能体提示词都集中在此，便于审阅、版本控制，
+且无需修改智能体控制流即可调优。
 """
+
 from app.prompts.router import ROUTER_SYSTEM
 from app.prompts.chat import CHAT_SYSTEM
 from app.prompts.writer import WRITER_SYSTEM, build_writer_user_message

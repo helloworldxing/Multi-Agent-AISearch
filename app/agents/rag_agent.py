@@ -1,11 +1,10 @@
-"""RAG pipeline: chunk + embed + Chroma index + retrieve + LLM rerank.
+"""RAG 管道：分块 + 向量化 + Chroma 索引 + 召回 + LLM 重排。
 
-A fresh, persisted Chroma collection is created per (request, subdir) under
-``data/vector_db/<trace_id>/<subdir>``. The ``subdir`` parameter lets parallel
-sub-tasks each write to an isolated directory so concurrent fan-out branches
-never clobber one another. Default ``subdir="main"`` preserves the legacy
-single-pass mode.
+每次请求会在 ``data/vector_db/<trace_id>/<subdir>`` 下创建一个独立持久化的
+Chroma collection。``subdir`` 允许并行子任务各写各的隔离目录，避免并发
+分叉彼此覆盖。默认 ``subdir="main"`` 保持单轮模式。
 """
+
 from __future__ import annotations
 
 import json
@@ -36,10 +35,11 @@ _splitter = RecursiveCharacterTextSplitter(
 
 
 def _get_embedder():
-    """Lazy-load BGE; first call downloads ~95MB."""
+    """延迟加载 BGE；首次调用会下载约 95MB。"""
     global _embedder
     if _embedder is None:
         from sentence_transformers import SentenceTransformer
+
         _embedder = SentenceTransformer(_EMBED_MODEL)
     return _embedder
 
@@ -55,16 +55,19 @@ def _persist_dir(trace_id: str, subdir: str) -> Path:
 
 def _open_collection(trace_id: str, subdir: str):
     import chromadb
+
     persist_dir = _persist_dir(trace_id, subdir)
     if persist_dir.exists():
         shutil.rmtree(persist_dir, ignore_errors=True)
     persist_dir.mkdir(parents=True, exist_ok=True)
     client = chromadb.PersistentClient(path=str(persist_dir))
-    return client.get_or_create_collection(name="docs", metadata={"hnsw:space": "cosine"})
+    return client.get_or_create_collection(
+        name="docs", metadata={"hnsw:space": "cosine"}
+    )
 
 
 def index_documents(ctx: MCPContext, docs: list[dict], subdir: str = "main") -> dict:
-    """Chunk every doc and persist embeddings into a per-(request,subdir) Chroma collection."""
+    """对每篇文档分块并写入对应 (request, subdir) 的 Chroma collection。"""
     collection = _open_collection(ctx.trace_id, subdir)
 
     ids: list[str] = []
@@ -84,11 +87,13 @@ def index_documents(ctx: MCPContext, docs: list[dict], subdir: str = "main") -> 
                 continue
             ids.append(f"d{d_idx}-c{c_idx}-{uuid.uuid4().hex[:8]}")
             texts.append(chunk)
-            metadatas.append({
-                "doc_index": d_idx,
-                "title": d.get("title", ""),
-                "url": d.get("url", ""),
-            })
+            metadatas.append(
+                {
+                    "doc_index": d_idx,
+                    "title": d.get("title", ""),
+                    "url": d.get("url", ""),
+                }
+            )
 
     persist_dir = _persist_dir(ctx.trace_id, subdir)
     if not texts:
@@ -107,8 +112,9 @@ def retrieve(
     k_recall: int = 12,
     k_final: int = 6,
 ) -> list[dict]:
-    """Vector-recall then LLM rerank, scoped to one ``subdir``."""
+    """向量召回后 LLM 重排，仅作用于指定 ``subdir``。"""
     import chromadb
+
     persist_dir = _persist_dir(ctx.trace_id, subdir)
     if not persist_dir.exists():
         return []
@@ -129,13 +135,15 @@ def retrieve(
 
     candidates: list[dict] = []
     for i, (text, meta) in enumerate(zip(documents, metadatas), start=1):
-        candidates.append({
-            "id": i,
-            "text": text,
-            "title": (meta or {}).get("title", ""),
-            "url": (meta or {}).get("url", ""),
-            "doc_index": (meta or {}).get("doc_index", -1),
-        })
+        candidates.append(
+            {
+                "id": i,
+                "text": text,
+                "title": (meta or {}).get("title", ""),
+                "url": (meta or {}).get("url", ""),
+                "doc_index": (meta or {}).get("doc_index", -1),
+            }
+        )
 
     if not candidates:
         return []
@@ -163,10 +171,12 @@ def _llm_rerank(query: str, chunks: list[dict]) -> list[int]:
         base_url="https://api.deepseek.com",
         temperature=0,
     )
-    response = llm.invoke([
-        SystemMessage(content=RERANK_SYSTEM),
-        HumanMessage(content=build_rerank_user_message(query, chunks)),
-    ])
+    response = llm.invoke(
+        [
+            SystemMessage(content=RERANK_SYSTEM),
+            HumanMessage(content=build_rerank_user_message(query, chunks)),
+        ]
+    )
     return _parse_ranking(response.content)
 
 

@@ -20,10 +20,10 @@ def _build_llm() -> ChatOpenAI:
 
 
 def write(ctx: MCPContext, chunks: list[dict]) -> str:
-    """Generate the research report from reranked RAG chunks.
+    """基于重排后的 RAG 片段生成研究报告。
 
-    ``chunks`` is the output of ``rag_agent.retrieve`` — a list of
-    ``{"id", "title", "url", "text", "doc_index"}`` ordered by relevance.
+    ``chunks`` 来自 ``rag_agent.retrieve``，按相关性排序，格式为
+    ``{"id", "title", "url", "text", "doc_index"}``。
     """
     user_message = build_writer_user_message(ctx.request, chunks)
     llm = _build_llm()

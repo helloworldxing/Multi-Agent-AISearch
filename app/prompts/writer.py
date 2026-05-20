@@ -1,10 +1,11 @@
-"""Prompts for the writer agent.
+"""写作智能体提示词。
 
-Provides:
-- WRITER_SYSTEM: high-quality research-writing system prompt
-- build_writer_user_message: formats reranked RAG chunks (possibly from
-  multiple parallel sub-queries) into the user turn
+包含：
+- WRITER_SYSTEM：高质量研究写作系统提示词
+- build_writer_user_message：将重排后的 RAG 片段（可能来自多个并行子问题）
+    格式化为用户输入
 """
+
 from __future__ import annotations
 
 WRITER_SYSTEM = """你是一名资深的中文研究员与撰稿人。基于"用户主题"和经过精排的"证据片段"（可能来自多个并行子任务的检索），输出一篇结构清晰、逻辑严密、可直接发布的 Markdown 研究报告。
@@ -30,30 +31,30 @@ WRITER_SYSTEM = """你是一名资深的中文研究员与撰稿人。基于"用
 
 
 def build_writer_user_message(topic: str, chunks: list[dict]) -> str:
-    """Format chunks (potentially from multiple parallel subtasks) for the writer.
+    """为写作智能体格式化片段（可能来自多个并行子任务）。
 
-    Citation numbering is based on URL so chunks from different sub-tasks but
-    the same source page share one citation. ``subquery`` (if present) is
-    surfaced to the writer so it can structure 详细分析 around the planner's
-    decomposition when useful.
+    引用编号基于 URL：不同子任务但同一来源页面共享一个编号。
+    若有 ``subquery``，则暴露给写作端，便于在合适时按规划维度组织“详细分析”。
     """
     if not chunks:
         return f"研究主题：{topic}\n\n（未检索到相关证据，请如实说明资料不足。）"
 
-    # Build URL → citation number map (stable order: first seen)
+    # 构建 URL → 引用编号映射（按首次出现顺序稳定编号）
     url_to_citation: dict[str, int] = {}
     citations: list[dict] = []
     for c in chunks:
         url = c.get("url") or f"__no_url_{c.get('subquery_idx', '?')}_{id(c)}"
         if url not in url_to_citation:
             url_to_citation[url] = len(citations) + 1
-            citations.append({
-                "n": url_to_citation[url],
-                "title": c.get("title", ""),
-                "url": c.get("url", ""),
-            })
+            citations.append(
+                {
+                    "n": url_to_citation[url],
+                    "title": c.get("title", ""),
+                    "url": c.get("url", ""),
+                }
+            )
 
-    # Group subquery list (deduped, in insertion order)
+    # 汇总子问题列表（去重并保持插入顺序）
     seen_sq: set[str] = set()
     subqueries: list[str] = []
     for c in chunks:
@@ -81,9 +82,7 @@ def build_writer_user_message(topic: str, chunks: list[dict]) -> str:
         f"[{c['n']}] {c['title']} — {c['url']}" for c in citations
     )
     sub_block = (
-        "\n".join(f"- {s}" for s in subqueries)
-        if subqueries
-        else "(无显式子任务列表)"
+        "\n".join(f"- {s}" for s in subqueries) if subqueries else "(无显式子任务列表)"
     )
 
     return (

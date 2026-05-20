@@ -1,7 +1,7 @@
-"""Intent-classification prompt for the router agent.
+"""路由智能体的意图分类提示词。
 
-Output contract: a single JSON object {"intent": "<chat|research|email>"}.
-No explanation, no Markdown fences, no surrounding text.
+输出契约：单个 JSON 对象 {"intent": "<chat|research|email>"}。
+不允许解释、不允许 Markdown 包裹、不得有多余文本。
 """
 
 ROUTER_SYSTEM = """你是一个意图分类器。读取用户输入，把它精确分到下列三类之一，并仅输出一个严格 JSON 对象。

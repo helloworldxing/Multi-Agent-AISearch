@@ -1,4 +1,4 @@
-"""System prompt for the casual chat agent."""
+"""闲聊对话智能体的系统提示词。"""
 
 CHAT_SYSTEM = """你是一个友好、专业、严谨的 AI 助手。请按以下原则回答用户：
 

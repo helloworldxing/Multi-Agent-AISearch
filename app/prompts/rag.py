@@ -1,4 +1,5 @@
-"""Prompts for retrieval reranking."""
+"""用于检索重排的提示词。"""
+
 from __future__ import annotations
 
 RERANK_SYSTEM = """你是一名严格的相关性评判员。我会给你一个"用户查询"和若干编号候选片段，请按"片段对回答该查询的有用程度"从高到低排序。
