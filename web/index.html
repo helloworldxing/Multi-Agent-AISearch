@@ -113,6 +113,66 @@
   .email-info { background: #fff4e0; color: #b26a00; }
   .file-info.visible, .email-info.visible { display: block; }
 
+  /* 步骤确认面板 */
+  .confirm-panel {
+    background: #fff; border: 1px solid #e0e0e0; border-radius: 8px;
+    padding: 18px; margin-bottom: 18px; display: none;
+  }
+  .confirm-panel.visible { display: block; }
+  .confirm-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .confirm-header h3 { font-size: 15px; color: #333; }
+  .confirm-hint { font-size: 12px; color: #888; margin-bottom: 12px; }
+  .step-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+  .step-row {
+    display: flex; align-items: center; gap: 8px;
+    background: #f7f9fc; border: 1px solid #e0e0e0; border-radius: 6px;
+    padding: 6px 8px;
+  }
+  .step-index {
+    flex: 0 0 28px; height: 28px; display: flex; align-items: center;
+    justify-content: center; background: #4f8cff; color: #fff;
+    border-radius: 50%; font-size: 12px; font-weight: 500;
+  }
+  .step-input {
+    flex: 1; padding: 7px 10px; font-size: 14px; border: 1px solid #d0d7e2;
+    border-radius: 4px; outline: none; background: #fff;
+  }
+  .step-input:focus { border-color: #4f8cff; }
+  .step-btn {
+    flex: 0 0 auto; padding: 4px 8px; font-size: 12px; line-height: 1;
+    background: #fff; border: 1px solid #d0d7e2; border-radius: 4px;
+    cursor: pointer; color: #555;
+  }
+  .step-btn:hover { background: #eef3fb; border-color: #4f8cff; color: #4f8cff; }
+  .step-btn:disabled { opacity: .4; cursor: not-allowed; }
+  .step-btn.danger:hover { background: #fdecec; border-color: #ef5350; color: #c62828; }
+  .confirm-actions {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 10px; margin-top: 12px; padding-top: 12px; border-top: 1px dashed #e0e0e0;
+  }
+  .confirm-actions .left { display: flex; gap: 8px; }
+  .confirm-actions .right { display: flex; gap: 8px; }
+  .btn-add {
+    padding: 7px 14px; font-size: 13px; background: #fff;
+    border: 1px dashed #4f8cff; color: #4f8cff; border-radius: 6px;
+    cursor: pointer;
+  }
+  .btn-add:hover { background: #eef3fb; }
+  .btn-cancel {
+    padding: 8px 16px; font-size: 14px; background: #fff;
+    border: 1px solid #d0d7e2; color: #555; border-radius: 6px; cursor: pointer;
+  }
+  .btn-cancel:hover { background: #f5f7fa; }
+  .btn-confirm {
+    padding: 8px 18px; font-size: 14px; background: #4f8cff; color: #fff;
+    border: none; border-radius: 6px; cursor: pointer;
+  }
+  .btn-confirm:hover { background: #3a6fd8; }
+  .btn-confirm:disabled { background: #aaa; cursor: not-allowed; }
+
   .cursor-blink::after {
     content: "▊"; animation: blink 1s step-end infinite; color: #4f8cff;
   }
@@ -137,6 +197,26 @@
   <div id="intentChip" class="intent-chip hidden"></div>
   <div id="statusBar" class="status-bar"></div>
 
+  <div id="confirmPanel" class="confirm-panel">
+    <div class="confirm-header">
+      <h3>执行步骤预览（可编辑）</h3>
+      <span id="confirmIntent" class="intent-chip"></span>
+    </div>
+    <div class="confirm-hint">
+      下面是 AI 拆解出的子任务，你可以修改文本、增删步骤、调整顺序。确认无误后点击「确认执行」。
+    </div>
+    <div id="stepList" class="step-list"></div>
+    <div class="confirm-actions">
+      <div class="left">
+        <button class="btn-add" onclick="addStep()">+ 添加步骤</button>
+      </div>
+      <div class="right">
+        <button class="btn-cancel" onclick="cancelConfirm()">取消，退回</button>
+        <button id="confirmBtn" class="btn-confirm" onclick="confirmAndRun()">确认执行</button>
+      </div>
+    </div>
+  </div>
+
   <div id="planSection" class="plan-section">
     <div class="plan-header">
       <h3 id="planTitle">任务规划</h3>
@@ -158,50 +238,212 @@ const INTENT_LABELS = {
   email:    { text: '邮件投递',  cls: 'intent-email'    }
 };
 
-function startResearch() {
-  const topic = document.getElementById('topicInput').value.trim();
+// 当前已确认/编辑的状态，供「确认执行」按钮读取
+let pendingPlan = null; // { topic, email, intent, subqueries: [] }
+
+function $(id) { return document.getElementById(id); }
+
+function resetUI() {
+  $('statusBar').className = 'status-bar';
+  $('statusBar').textContent = '';
+  $('intentChip').className = 'intent-chip hidden';
+  $('intentChip').textContent = '';
+  $('confirmPanel').classList.remove('visible');
+  $('stepList').innerHTML = '';
+  $('planSection').classList.remove('visible');
+  $('subtaskGrid').innerHTML = '';
+  $('planProgress').textContent = '0 / 0';
+  $('progressFill').style.width = '0%';
+  $('output').classList.remove('visible');
+  $('output').textContent = '';
+  $('output').classList.remove('cursor-blink');
+  $('fileInfo').classList.remove('visible');
+  $('emailInfo').classList.remove('visible');
+}
+
+function setBtn(disabled, text) {
+  const btn = $('startBtn');
+  btn.disabled = disabled;
+  btn.textContent = text;
+}
+
+// 第一阶段：调用 /api/research/plan，拿到意图与子问题
+async function startResearch() {
+  const topic = $('topicInput').value.trim();
   if (!topic) return;
-  const email = document.getElementById('emailInput').value.trim();
+  const email = $('emailInput').value.trim();
 
-  const btn         = document.getElementById('startBtn');
-  const statusBar   = document.getElementById('statusBar');
-  const intentChip  = document.getElementById('intentChip');
-  const planSection = document.getElementById('planSection');
-  const planTitle   = document.getElementById('planTitle');
-  const planProgress= document.getElementById('planProgress');
-  const progressFill= document.getElementById('progressFill');
-  const subtaskGrid = document.getElementById('subtaskGrid');
-  const output      = document.getElementById('output');
-  const fileInfo    = document.getElementById('fileInfo');
-  const emailInfo   = document.getElementById('emailInfo');
+  resetUI();
+  setBtn(true, '生成步骤中...');
+  $('statusBar').className = 'status-bar routing';
+  $('statusBar').textContent = '正在判断意图与生成步骤...';
 
-  btn.disabled = true;
-  btn.textContent = '处理中...';
-  statusBar.className = 'status-bar';
-  statusBar.textContent = '';
-  intentChip.className = 'intent-chip hidden';
-  intentChip.textContent = '';
-  planSection.classList.remove('visible');
-  subtaskGrid.innerHTML = '';
-  planProgress.textContent = '0 / 0';
-  progressFill.style.width = '0%';
-  output.classList.remove('visible');
-  output.textContent = '';
-  output.classList.remove('cursor-blink');
-  fileInfo.classList.remove('visible');
-  emailInfo.classList.remove('visible');
+  try {
+    let url = '/api/research/plan?topic=' + encodeURIComponent(topic);
+    if (email) url += '&email=' + encodeURIComponent(email);
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('plan 接口返回 ' + res.status);
+    const data = await res.json();
 
-  let url = '/api/research/stream?topic=' + encodeURIComponent(topic);
-  if (email) url += '&email=' + encodeURIComponent(email);
+    pendingPlan = {
+      topic: topic,
+      email: email,
+      intent: data.intent,
+      subqueries: Array.isArray(data.subqueries) ? data.subqueries.slice() : []
+    };
+
+    if (data.intent === 'chat') {
+      // chat 跳过确认，直接开跑
+      $('statusBar').className = 'status-bar chatting';
+      $('statusBar').textContent = '正在回答...';
+      runStream(pendingPlan);
+    } else {
+      showConfirmPanel(pendingPlan);
+      setBtn(false, '发送');
+    }
+  } catch (err) {
+    $('statusBar').className = 'status-bar error';
+    $('statusBar').textContent = '生成步骤失败: ' + err.message;
+    setBtn(false, '发送');
+  }
+}
+
+// 渲染步骤确认面板
+function showConfirmPanel(plan) {
+  const meta = INTENT_LABELS[plan.intent] || INTENT_LABELS.chat;
+  const chip = $('confirmIntent');
+  chip.className = 'intent-chip ' + meta.cls;
+  chip.textContent = '意图: ' + meta.text;
+
+  $('statusBar').className = 'status-bar planning';
+  $('statusBar').textContent = '请确认执行步骤';
+  $('confirmPanel').classList.add('visible');
+  renderSteps();
+}
+
+function renderSteps() {
+  const list = $('stepList');
+  list.innerHTML = '';
+  pendingPlan.subqueries.forEach(function(q, i) {
+    const row = document.createElement('div');
+    row.className = 'step-row';
+    row.innerHTML =
+      '<div class="step-index">' + (i + 1) + '</div>' +
+      '<input class="step-input" type="text" value="" />' +
+      '<button class="step-btn" title="上移">↑</button>' +
+      '<button class="step-btn" title="下移">↓</button>' +
+      '<button class="step-btn danger" title="删除">✕</button>';
+    const input = row.querySelector('input');
+    input.value = q;
+    input.addEventListener('input', function() {
+      pendingPlan.subqueries[i] = input.value;
+    });
+    const btns = row.querySelectorAll('button');
+    btns[0].disabled = (i === 0);
+    btns[1].disabled = (i === pendingPlan.subqueries.length - 1);
+    btns[0].onclick = function() { moveStep(i, -1); };
+    btns[1].onclick = function() { moveStep(i, 1); };
+    btns[2].onclick = function() { deleteStep(i); };
+    list.appendChild(row);
+  });
+  $('confirmBtn').disabled = pendingPlan.subqueries.length === 0;
+}
+
+function addStep() {
+  pendingPlan.subqueries.push('');
+  renderSteps();
+  // 聚焦到新增的输入框
+  const inputs = $('stepList').querySelectorAll('input');
+  if (inputs.length) inputs[inputs.length - 1].focus();
+}
+
+function deleteStep(idx) {
+  pendingPlan.subqueries.splice(idx, 1);
+  renderSteps();
+}
+
+function moveStep(idx, delta) {
+  const target = idx + delta;
+  if (target < 0 || target >= pendingPlan.subqueries.length) return;
+  const arr = pendingPlan.subqueries;
+  const tmp = arr[idx]; arr[idx] = arr[target]; arr[target] = tmp;
+  renderSteps();
+}
+
+function cancelConfirm() {
+  // 回到输入框，保留输入内容（topic/email 一直没动过）
+  pendingPlan = null;
+  resetUI();
+  $('topicInput').focus();
+}
+
+function confirmAndRun() {
+  if (!pendingPlan) return;
+  // 清理空白步骤
+  const cleaned = pendingPlan.subqueries.map(function(s) { return s.trim(); })
+                                        .filter(function(s) { return s.length > 0; });
+  if (cleaned.length === 0) {
+    $('statusBar').className = 'status-bar error';
+    $('statusBar').textContent = '请至少保留一个步骤再执行';
+    return;
+  }
+  pendingPlan.subqueries = cleaned;
+  $('confirmPanel').classList.remove('visible');
+  runStream(pendingPlan);
+}
+
+// 第二阶段：用确认后的 intent + subqueries 调用 /api/research/stream
+function runStream(plan) {
+  setBtn(true, '处理中...');
+
+  let url = '/api/research/stream?topic=' + encodeURIComponent(plan.topic);
+  if (plan.email)  url += '&email=' + encodeURIComponent(plan.email);
+  if (plan.intent) url += '&intent=' + encodeURIComponent(plan.intent);
+  if (plan.subqueries && plan.subqueries.length) {
+    url += '&subqueries=' + encodeURIComponent(JSON.stringify(plan.subqueries));
+  }
+
+  const intentChip  = $('intentChip');
+  const statusBar   = $('statusBar');
+  const planSection = $('planSection');
+  const planTitle   = $('planTitle');
+  const planProgress= $('planProgress');
+  const progressFill= $('progressFill');
+  const subtaskGrid = $('subtaskGrid');
+  const output      = $('output');
+  const fileInfo    = $('fileInfo');
+  const emailInfo   = $('emailInfo');
+
+  // 已经从 plan 阶段拿到意图，这里直接显示一次
+  const meta = INTENT_LABELS[plan.intent] || INTENT_LABELS.chat;
+  intentChip.className = 'intent-chip ' + meta.cls;
+  intentChip.textContent = '意图: ' + meta.text;
+
+  // 如果是 research/email，提前把卡片画出来（已确认的步骤）
+  if (plan.intent !== 'chat' && plan.subqueries.length) {
+    planSection.classList.add('visible');
+    planTitle.textContent = '执行中（' + plan.subqueries.length + ' 个并行子任务）';
+    planProgress.textContent = '0 / ' + plan.subqueries.length;
+    subtaskGrid.innerHTML = '';
+    plan.subqueries.forEach(function(q, i) {
+      const card = document.createElement('div');
+      card.className = 'subtask-card running';
+      card.id = 'subtask-' + i;
+      card.innerHTML =
+        '<div class="sc-title">[' + (i + 1) + '] ' + escapeHtml(q) + '</div>'
+        + '<div class="sc-state">⏳ 检索中...</div>';
+      subtaskGrid.appendChild(card);
+    });
+  }
+
   const es = new EventSource(url);
-
-  let totalSubtasks = 0;
+  let totalSubtasks = plan.subqueries.length;
 
   es.addEventListener('intent', function(e) {
     const data = JSON.parse(e.data);
-    const meta = INTENT_LABELS[data.intent] || INTENT_LABELS.chat;
-    intentChip.className = 'intent-chip ' + meta.cls;
-    intentChip.textContent = '意图: ' + meta.text;
+    const m = INTENT_LABELS[data.intent] || INTENT_LABELS.chat;
+    intentChip.className = 'intent-chip ' + m.cls;
+    intentChip.textContent = '意图: ' + m.text;
   });
 
   es.addEventListener('status', function(e) {
@@ -211,6 +453,7 @@ function startResearch() {
   });
 
   es.addEventListener('plan_done', function(e) {
+    // execution workflow 跳过 planner，不会触发；保留兼容旧链路
     const data = JSON.parse(e.data);
     totalSubtasks = data.count;
     planSection.classList.add('visible');
@@ -288,8 +531,7 @@ function startResearch() {
       statusBar.className = 'status-bar error';
       statusBar.textContent = '连接中断或已结束';
     }
-    btn.disabled = false;
-    btn.textContent = '发送';
+    setBtn(false, '发送');
     es.close();
   };
 }

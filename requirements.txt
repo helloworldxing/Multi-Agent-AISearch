@@ -9,3 +9,5 @@ tavily-python
 python-dotenv
 chromadb
 sentence-transformers
+PyJWT
+bcrypt

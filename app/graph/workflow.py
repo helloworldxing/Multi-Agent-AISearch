@@ -325,3 +325,45 @@ def build_workflow() -> StateGraph:
 
     graph.add_edge("email", END)
     return graph.compile()
+
+
+def build_execution_workflow() -> StateGraph:
+    """执行专用工作流：跳过 router 与 planner。
+
+    入口直接落到 orchestrator（research/email）或 chat，
+    由调用方通过初始 state 提供 ``intent`` 与 ``subqueries``。
+    """
+    graph = StateGraph(ResearchState)
+    graph.add_node("entry", lambda s: {})
+    graph.add_node("chat", _chat_node)
+    graph.add_node("orchestrator", _orchestrator_node)
+    graph.add_node("subtask", _subtask_node)
+    graph.add_node("join", _join_node)
+    graph.add_node("write", _write_node)
+    graph.add_node("reviewer", _reviewer_node)
+    graph.add_node("replan", _replan_node)
+    graph.add_node("email", _email_node)
+
+    def _route_from_entry(state: ResearchState) -> str:
+        return "chat" if state.get("intent") == "chat" else "orchestrator"
+
+    graph.add_edge(START, "entry")
+    graph.add_conditional_edges(
+        "entry", _route_from_entry, {"chat": "chat", "orchestrator": "orchestrator"}
+    )
+    graph.add_edge("chat", END)
+
+    graph.add_conditional_edges("orchestrator", _fan_out_subtasks, ["subtask"])
+    graph.add_edge("subtask", "join")
+    graph.add_conditional_edges("join", _route_from_join, {"write": "write", END: END})
+
+    graph.add_edge("write", "reviewer")
+    graph.add_conditional_edges(
+        "reviewer",
+        _route_after_review,
+        {"replan": "replan", "email": "email", END: END},
+    )
+    graph.add_edge("replan", "orchestrator")
+
+    graph.add_edge("email", END)
+    return graph.compile()
