@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import operator
-from typing import Annotated, TypedDict
-
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Send
 
@@ -13,29 +10,8 @@ from app.agents.rag_agent import index_documents, retrieve
 from app.agents.router_agent import classify
 from app.agents.search_agent import search
 from app.agents.writer_agent import write
+from app.graph.state import ResearchState
 from app.mcp.context import MCPContext
-
-
-class ResearchState(TypedDict, total=False):
-    ctx: MCPContext
-    intent: str
-    subqueries: list[str]
-    # 迭代与控制参数
-    run_id: int
-    expected_subtasks: int
-    iteration: int
-    max_iterations: int
-    review: dict
-    review_feedback: str
-    # 并行子任务通过 reducer 追加到这些字段
-    chunks: Annotated[list[dict], operator.add]
-    subtask_progress: Annotated[list[dict], operator.add]
-    document: str
-    chat_response: str
-    email_to: str
-    email_sent: dict
-    error: str
-
 
 # ---------- 单步节点 ----------
 
@@ -226,6 +202,7 @@ def _route_from_router(state: ResearchState) -> str:
     return "chat" if state.get("intent") == "chat" else "planner"
 
 
+# 把一个大任务拆成多个小任务，然后并行发给多个 subtask 节点执行
 def _fan_out_subtasks(state: ResearchState):
     subqueries = state.get("subqueries") or []
     run_id = int(state.get("run_id", 0))
@@ -285,8 +262,11 @@ def _route_after_review(state: ResearchState) -> str:
 # ---------- graph ----------
 
 
+# 自动判意图和生成
 def build_workflow() -> StateGraph:
+    # 构建图
     graph = StateGraph(ResearchState)
+    # 添加节点
     graph.add_node("router", _router_node)
     graph.add_node("chat", _chat_node)
     graph.add_node("planner", _planner_node)
@@ -327,6 +307,7 @@ def build_workflow() -> StateGraph:
     return graph.compile()
 
 
+# 执行版，跳过 router/planner
 def build_execution_workflow() -> StateGraph:
     """执行专用工作流：跳过 router 与 planner。
 
