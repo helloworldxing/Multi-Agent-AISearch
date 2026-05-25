@@ -133,9 +133,7 @@ def me(user: dict = Depends(require_user)):
 def update_profile(payload: ProfilePayload, user: dict = Depends(require_user)):
     new_email = (payload.email or "").strip() or None
     with get_conn() as conn:
-        conn.execute(
-            "UPDATE users SET email = ? WHERE id = ?", (new_email, user["id"])
-        )
+        conn.execute("UPDATE users SET email = ? WHERE id = ?", (new_email, user["id"]))
         conn.commit()
         row = conn.execute(
             "SELECT id, username, email, created_at FROM users WHERE id = ?",
@@ -287,9 +285,7 @@ async def stream_research(
         try:
             parsed = json.loads(subqueries)
             if isinstance(parsed, list):
-                preset_subqueries = [
-                    str(q).strip() for q in parsed if str(q).strip()
-                ]
+                preset_subqueries = [str(q).strip() for q in parsed if str(q).strip()]
         except json.JSONDecodeError:
             preset_subqueries = None
 
@@ -352,6 +348,12 @@ async def stream_research(
         ):
             if mode == "updates":
                 for node_name, node_output in chunk.items():
+                    # 全局节点错误事件：若节点返回 error 字段，则立即将错误通过 SSE 发送给前端
+                    if isinstance(node_output, dict) and node_output.get("error"):
+                        yield _sse(
+                            "error",
+                            {"node": node_name, "message": node_output["error"]},
+                        )
                     if node_name == "router":
                         intent_val = node_output.get("intent", "chat")
                         final_intent = intent_val
@@ -390,6 +392,16 @@ async def stream_research(
                     elif node_name == "subtask":
                         progress_list = node_output.get("subtask_progress", []) or []
                         for p in progress_list:
+                            # 如果子任务被标记为失败，额外发出 error 事件
+                            if p.get("status") == "failed":
+                                yield _sse(
+                                    "error",
+                                    {
+                                        "node": "subtask",
+                                        "idx": p.get("idx"),
+                                        "message": p.get("result") or "子任务失败",
+                                    },
+                                )
                             finished_subtasks += 1
                             yield _sse(
                                 "subtask_done",
