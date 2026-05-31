@@ -9,6 +9,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from langchain_core.messages import AIMessageChunk
 
+from app.api import app
 from app.graph.workflow import build_workflow
 from app.mcp.context import MCPContext
 
@@ -52,7 +53,11 @@ async def run_stream(topic: str) -> None:
 
 
 def main():
-    topic = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else input("请输入研究主题: ").strip()
+    topic = (
+        " ".join(sys.argv[1:])
+        if len(sys.argv) > 1
+        else input("请输入研究主题: ").strip()
+    )
     if not topic:
         print("错误: 请提供研究主题")
         sys.exit(1)
