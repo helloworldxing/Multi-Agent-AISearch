@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root {
+  height: 100%;
+}
+
+@layer base {
+  body {
+    @apply font-sans antialiased;
+  }
+}
+
+/* react-markdown 排版 */
+.prose-output h1 { @apply text-xl font-semibold mt-4 mb-2; }
+.prose-output h2 { @apply text-lg font-semibold mt-4 mb-2; }
+.prose-output h3 { @apply text-base font-semibold mt-3 mb-1; }
+.prose-output p  { @apply leading-7 my-2; }
+.prose-output ul { @apply list-disc pl-6 my-2; }
+.prose-output ol { @apply list-decimal pl-6 my-2; }
+.prose-output a  { @apply text-brand-600 dark:text-brand-300 underline; }
+.prose-output code {
+  @apply px-1 py-0.5 rounded text-[0.85em] bg-slate-100 dark:bg-slate-800;
+}
+.prose-output pre {
+  @apply p-3 my-3 rounded-md overflow-auto bg-slate-100 dark:bg-slate-800 text-sm;
+}
+.prose-output pre code { @apply bg-transparent p-0; }
+.prose-output blockquote {
+  @apply border-l-4 border-slate-300 dark:border-slate-600 pl-3 my-3 text-slate-600 dark:text-slate-300;
+}
+.prose-output table { @apply w-full text-sm my-3 border-collapse; }
+.prose-output th, .prose-output td {
+  @apply border border-slate-200 dark:border-slate-700 px-2 py-1;
+}
+
+/* 闪烁光标 */
+.cursor-blink::after {
+  content: "▊";
+  animation: blink 1s step-end infinite;
+  color: rgb(74 114 245);
+  margin-left: 2px;
+}
+@keyframes blink {
+  50% { opacity: 0; }
+}
